@@ -1,15 +1,14 @@
 import { useState } from "react";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, getDocs, limit, query, serverTimestamp, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CheckCircle2, AlertCircle } from "lucide-react";
+import { CheckCircle2, AlertCircle, Smartphone } from "lucide-react";
 
 interface FormState {
-  // Student Information
   studentId: string;
   lastName: string;
   givenName: string;
@@ -22,7 +21,6 @@ interface FormState {
   course: string;
   yearLevel: string;
 
-  // Address & Contact
   streetBarangay: string;
   townCity: string;
   province: string;
@@ -30,15 +28,12 @@ interface FormState {
   email: string;
   mobileNumber: string;
 
-  // Special categories
   pwd: string;
   ipGroup: string;
 
-  // Family Background — Father
   fatherLastName: string;
   fatherGivenName: string;
   fatherMiddleName: string;
-  // Family Background — Mother (Maiden Name)
   motherLastName: string;
   motherGivenName: string;
   motherMiddleName: string;
@@ -56,31 +51,44 @@ const initial: FormState = {
 export default function Apply() {
   const [form, setForm] = useState<FormState>(initial);
   const [submitting, setSubmitting] = useState(false);
-  const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [submittedStudentId, setSubmittedStudentId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((p) => ({ ...p, [k]: v }));
 
-  // Basic eligibility pre-check
   function evaluateEligibility(): { eligible: boolean; notes: string[] } {
     const notes: string[] = [];
     const units = parseFloat(form.unitsEnrolled);
     if (isNaN(units) || units <= 0) notes.push("Enrolled units are required.");
     if (!form.course.trim()) notes.push("Course / program is required.");
     if (!form.yearLevel.trim()) notes.push("Year level is required.");
-    if (!form.email.trim() || !form.mobileNumber.trim()) notes.push("Email and mobile number are required for contact.");
     return { eligible: notes.length === 0, notes };
   }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setError(null);
     setSubmitting(true);
-    setStatus(null);
     try {
+      const studentId = form.studentId.trim();
+
+      // Reject duplicate Student IDs.
+      const dup = await getDocs(query(collection(db, "applications"), where("studentId", "==", studentId), limit(1)));
+      if (!dup.empty) {
+        setError("A pre-application has already been submitted with this Student ID.");
+        setSubmitting(false);
+        return;
+      }
+
       const elig = evaluateEligibility();
       const fullName = [form.givenName, form.middleName, form.lastName, form.extensionName]
         .filter(Boolean).join(" ");
+
       await addDoc(collection(db, "applications"), {
         ...form,
+        studentId,
+        uid: null, // linked when the scholar signs up in the mobile app
+        userEmail: form.email.trim(),
         fullName,
         unitsEnrolled: parseFloat(form.unitsEnrolled) || null,
         totalAssessment: parseFloat(form.totalAssessment) || null,
@@ -90,35 +98,31 @@ export default function Apply() {
         eligibilityCheck: elig,
         submittedAt: serverTimestamp(),
       });
-      setForm(initial);
-      setStatus({
-        ok: true,
-        msg: "Pre-application submitted! Please present your current Enrollment Registration Certificate (ERC) at the SGO office to complete your application.",
-      });
+
+      setSubmittedStudentId(studentId);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err: any) {
-      setStatus({ ok: false, msg: err?.message ?? "Submission failed. Please try again." });
+      setError(err?.message ?? "Submission failed. Please try again.");
     } finally {
       setSubmitting(false);
     }
   }
 
+  if (submittedStudentId) {
+    return <SuccessScreen studentId={submittedStudentId} />;
+  }
+
   return (
-    <div className="container py-12 max-w-4xl">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold">UniFAST — Tertiary Education Subsidy</h1>
-        <p className="text-lg text-muted-foreground">Pre-Application Form</p>
+    <div className="container py-8 sm:py-12 max-w-4xl">
+      <div className="mb-6">
+        <h1 className="text-2xl sm:text-3xl font-bold">UniFAST — Tertiary Education Subsidy</h1>
+        <p className="text-base sm:text-lg text-muted-foreground">Pre-Application Form</p>
       </div>
 
-      {status && (
-        <div
-          className={`mb-6 flex items-start gap-2 rounded-lg border p-4 text-sm ${
-            status.ok ? "border-emerald-500/40 bg-emerald-50 text-emerald-900"
-                      : "border-destructive/40 bg-destructive/10 text-destructive"
-          }`}
-        >
-          {status.ok ? <CheckCircle2 className="h-5 w-5 mt-0.5" /> : <AlertCircle className="h-5 w-5 mt-0.5" />}
-          <span>{status.msg}</span>
+      {error && (
+        <div className="mb-6 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+          <AlertCircle className="h-5 w-5 mt-0.5" />
+          <span>{error}</span>
         </div>
       )}
 
@@ -169,7 +173,7 @@ export default function Apply() {
               <Select value={form.yearLevel} onValueChange={(v) => set("yearLevel", v)}>
                 <SelectTrigger><SelectValue placeholder="Select year level" /></SelectTrigger>
                 <SelectContent>
-                  {["1st Year","2nd Year","3rd Year","4th Year","5th Year","Graduate"].map((y) => (
+                  {["1st Year","2nd Year","3rd Year","4th Year"].map((y) => (
                     <SelectItem key={y} value={y}>{y}</SelectItem>
                   ))}
                 </SelectContent>
@@ -205,11 +209,18 @@ export default function Apply() {
               <Input value={form.zipCode} onChange={(e) => set("zipCode", e.target.value)} />
             </Field>
             <Field label="Mobile Number" required>
-              <Input required type="tel" value={form.mobileNumber} onChange={(e) => set("mobileNumber", e.target.value)} />
+              <Input
+                required type="tel" inputMode="numeric" pattern="\d{11}" maxLength={11}
+                placeholder="11-digit number" title="Enter exactly 11 digits"
+                value={form.mobileNumber}
+                onChange={(e) => set("mobileNumber", e.target.value.replace(/\D/g, "").slice(0, 11))}
+              />
             </Field>
             <div className="md:col-span-2">
               <Field label="Email Address" required>
-                <Input required type="email" value={form.email} onChange={(e) => set("email", e.target.value)} />
+                <Input required type="email" value={form.email}
+                  onChange={(e) => set("email", e.target.value)}
+                  placeholder="you@example.com" />
               </Field>
             </div>
             <Field label="Person With Disability (PWD)" required>
@@ -278,6 +289,46 @@ function Field({ label, required, children }: { label: string; required?: boolea
     <div className="space-y-1.5">
       <Label>{label}{required && <span className="text-destructive ml-0.5">*</span>}</Label>
       {children}
+    </div>
+  );
+}
+
+function SuccessScreen({ studentId }: { studentId: string }) {
+  return (
+    <div className="container py-12 sm:py-16 max-w-2xl">
+      <Card className="p-6 sm:p-8 border-slate-200 shadow-sm text-center">
+        <div className="mx-auto h-20 w-20 rounded-full ring-8 ring-emerald-100 bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg mb-5">
+          <CheckCircle2 className="h-10 w-10 text-white" />
+        </div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          Pre-Application Submitted
+        </p>
+        <h1 className="text-2xl sm:text-3xl font-bold mt-2">You&apos;re all set!</h1>
+        <p className="text-slate-600 mt-3 max-w-md mx-auto leading-relaxed">
+          Your UniFAST pre-application has been received. The SGO will review and forward it to CHED.
+          Please present your current Enrollment Registration Certificate (ERC) at the SGO office to
+          complete your application.
+        </p>
+
+        <div className="mt-8 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-left">
+          <div className="flex items-start gap-3 mb-3">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center flex-shrink-0">
+              <Smartphone className="h-5 w-5 text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-semibold text-blue-900">Want to track your status?</p>
+              <p className="text-sm text-blue-800">
+                Download the SGO Scholar mobile app and sign up using the <strong>same Student ID</strong>.
+                Your application will automatically link to your account.
+              </p>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg border border-blue-200 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Your Student ID</p>
+            <p className="text-sm font-mono font-semibold text-slate-900">{studentId}</p>
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }

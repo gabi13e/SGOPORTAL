@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "1007416501570",
+    "project_id": "portal-33351",
+    "storage_bucket": "portal-33351.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1007416501570:android:4376e4e1f3e6e6f46294db",
+        "android_client_info": {
+          "package_name": "ph.edu.sgo.sgo_scholar"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1007416501570-hbsg5ab68kf6pe7f5ub9cn6571cimlel.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAC-qkcG33XtuDZCp-vs__RLiB1snnvYdc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1007416501570-hbsg5ab68kf6pe7f5ub9cn6571cimlel.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
